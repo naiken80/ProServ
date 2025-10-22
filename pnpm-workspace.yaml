@@ -1,0 +1,8 @@
+autoInstallPeers: true
+strictPeerDependencies: false
+packages:
+  - apps/*
+  - apps/*/*
+  - packages/*
+  - packages/*/*
+  - tooling/*

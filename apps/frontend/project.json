@@ -1,0 +1,77 @@
+{
+  "name": "frontend",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/frontend/src",
+  "projectType": "application",
+  "tags": ["scope:frontend", "type:app"],
+  "targets": {
+    "build": {
+      "executor": "@nx/next:build",
+      "outputs": ["{workspaceRoot}/dist/apps/frontend"],
+      "options": {
+        "root": "apps/frontend",
+        "outputPath": "dist/apps/frontend"
+      },
+      "configurations": {
+        "production": {
+          "optimization": true
+        }
+      }
+    },
+    "serve": {
+      "executor": "@nx/next:dev-server",
+      "options": {
+        "root": "apps/frontend",
+        "hostname": "0.0.0.0",
+        "port": 3000
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "frontend:build:production"
+        }
+      }
+    },
+    "serve-static": {
+      "executor": "@nx/next:serve-static",
+      "dependsOn": ["build"],
+      "options": {
+        "buildTarget": "frontend:build:production",
+        "buildTargetOutputPath": "dist/apps/frontend"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": [
+          "apps/frontend/**/*.ts",
+          "apps/frontend/**/*.tsx",
+          "apps/frontend/**/*.js",
+          "apps/frontend/**/*.jsx"
+        ]
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/apps/frontend"],
+      "options": {
+        "jestConfig": "apps/frontend/jest.config.ts",
+        "passWithNoTests": true
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec tsc --project apps/frontend/tsconfig.json --noEmit"
+      }
+    },
+    "export": {
+      "executor": "@nx/next:export",
+      "dependsOn": ["build"],
+      "options": {
+        "buildTarget": "frontend:build:production",
+        "outputPath": "dist/apps/frontend-export"
+      }
+    }
+  }
+}

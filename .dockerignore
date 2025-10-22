@@ -1,0 +1,10 @@
+node_modules
+.DS_Store
+coverage
+dist
+.tmp
+tmp
+.git
+.vscode
+apps/**/.next
+apps/**/dist
