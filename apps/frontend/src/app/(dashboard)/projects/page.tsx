@@ -1,15 +1,11 @@
 import {
   AlertTriangle,
-  ArrowRight,
   CalendarRange,
   Clock,
   ClipboardList,
-  DollarSign,
-  Filter,
   Layers3,
   PlusCircle,
   RefreshCw,
-  Search,
   ShieldCheck,
   Sparkles,
   Target,
@@ -31,151 +27,91 @@ import { Skeleton } from '../../../components/ui/skeleton';
 import { fetchProjectSummaries } from '../../../lib/api/projects';
 import { formatCurrency, formatDate, formatPercent } from '../../../lib/formatters';
 import { cn } from '../../../lib/utils';
-
-type ProjectStatus = Awaited<ReturnType<typeof fetchProjectSummaries>>[number]['status'];
-
-const statusOptions: Array<{ value: ProjectStatus; label: string }> = [
-  { value: 'planning', label: 'Planning' },
-  { value: 'estimating', label: 'Estimating' },
-  { value: 'in-flight', label: 'In flight' },
-];
-
-const statusTone: Record<ProjectStatus, { dot: string; bar: string }> = {
-  planning: { dot: 'bg-primary', bar: 'bg-primary/50' },
-  estimating: { dot: 'bg-warning', bar: 'bg-warning/60' },
-  'in-flight': { dot: 'bg-success', bar: 'bg-success/60' },
-};
-
-function StatusBadge({ status, className }: { status: ProjectStatus; className?: string }) {
-  const map: Record<
-    ProjectStatus,
-    {
-      label: string;
-      variant: 'default' | 'outline' | 'warning' | 'success' | 'ghost';
-      className?: string;
-    }
-  > = {
-    planning: { label: 'Planning', variant: 'ghost', className: 'bg-primary/10 text-primary' },
-    estimating: {
-      label: 'Estimating',
-      variant: 'warning',
-      className: 'bg-warning/20 text-warning-foreground',
-    },
-    'in-flight': {
-      label: 'In flight',
-      variant: 'success',
-      className: 'bg-success/20 text-success-foreground',
-    },
-  };
-
-  const { label, variant, className: badgeClass } = map[status];
-  return (
-    <Badge
-      variant={variant}
-      className={cn(
-        'px-3 py-1.5 text-xs font-semibold uppercase tracking-wide shadow-sm',
-        badgeClass,
-        className,
-      )}
-    >
-      {label}
-    </Badge>
-  );
-}
+import { ProjectsResults } from './_components/projects-results';
+import { statusOptions, statusTone, type PipelineStatus } from './constants';
 
 type SearchParamCollection = Record<string, string | string[] | undefined>;
-
-function getInitials(value: string) {
-  return value
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part.charAt(0))
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-}
 
 export default async function ProjectsPage({
   searchParams,
 }: {
   searchParams?: Promise<SearchParamCollection>;
 }) {
-  const projectSummaries = await fetchProjectSummaries();
-
   const resolvedSearchParams = (await searchParams) ?? {};
 
   const statusParam = resolvedSearchParams.status;
   const statusFilter = statusOptions.some((option) => option.value === statusParam)
-    ? (statusParam as ProjectStatus)
+    ? (statusParam as PipelineStatus)
     : undefined;
 
   const searchTerm = typeof resolvedSearchParams.q === 'string' ? resolvedSearchParams.q.trim() : '';
-  const normalizedSearch = searchTerm.toLowerCase();
+  const pageParam = resolvedSearchParams.page;
+  const parsedPage =
+    typeof pageParam === 'string' ? Number.parseInt(pageParam, 10) : undefined;
+  const page = Number.isFinite(parsedPage) && parsedPage! > 0 ? parsedPage! : 1;
 
-  const visibleProjects = projectSummaries.filter((project) => {
-    const matchesStatus = statusFilter ? project.status === statusFilter : true;
-    const matchesSearch = normalizedSearch
-      ? `${project.name} ${project.client} ${project.owner}`.toLowerCase().includes(normalizedSearch)
-      : true;
-    return matchesStatus && matchesSearch;
+  const pageSizeParam = resolvedSearchParams.pageSize;
+  const parsedPageSize =
+    typeof pageSizeParam === 'string' ? Number.parseInt(pageSizeParam, 10) : undefined;
+  const pageSize =
+    Number.isFinite(parsedPageSize) && parsedPageSize! > 0
+      ? Math.min(Math.max(parsedPageSize!, 1), 50)
+      : 6;
+
+  const { data, meta, counts, lastUpdated } = await fetchProjectSummaries({
+    search: searchTerm,
+    status: statusFilter,
+    page,
+    pageSize,
   });
 
-  const statusCounts = projectSummaries.reduce<Record<ProjectStatus, number>>(
-    (acc, project) => {
-      acc[project.status] += 1;
-      return acc;
-    },
-    { planning: 0, estimating: 0, 'in-flight': 0 },
-  );
+  const currentProjects = data;
+  const statusCounts = counts;
+  const hasFilters = Boolean(statusFilter || searchTerm);
+  const totalActive = Object.values(statusCounts).reduce((total, count) => total + count, 0);
+  const totalItems = meta.totalItems;
+  const searchScopedTotal = meta.totalMatchingSearch ?? totalActive;
+  const overallTotal = meta.totalAll ?? totalActive;
+  const denominator = searchTerm ? searchScopedTotal : overallTotal || totalActive;
 
-  const totalActive = projectSummaries.length;
-
-  const averageMargin = visibleProjects.length
-    ? visibleProjects.reduce((sum, project) => sum + project.margin, 0) / visibleProjects.length
+  const averageMargin = currentProjects.length
+    ? currentProjects.reduce((sum, project) => sum + project.margin, 0) / currentProjects.length
     : 0;
 
-  const lastUpdated = visibleProjects.reduce<string | undefined>((latest, project) => {
+  const lastUpdatedFallback = currentProjects.reduce<string | undefined>((latest, project) => {
     if (!latest) return project.updatedAt;
     return new Date(project.updatedAt) > new Date(latest) ? project.updatedAt : latest;
   }, undefined);
 
-  const topDeal = visibleProjects.reduce<
-    (typeof visibleProjects)[number] | undefined
+  const lastSyncedAt = lastUpdated ?? lastUpdatedFallback ?? null;
+
+  const topDeal = currentProjects.reduce<
+    (typeof currentProjects)[number] | undefined
   >((currentTop, project) => {
     if (!currentTop) return project;
     return project.totalValue > currentTop.totalValue ? project : currentTop;
   }, undefined);
 
-  const nextKickoffProject = visibleProjects.reduce<
-    (typeof visibleProjects)[number] | undefined
+  const nextKickoffProject = currentProjects.reduce<
+    (typeof currentProjects)[number] | undefined
   >((current, project) => {
     if (!project.startDate) return current;
     if (!current) return project;
     return new Date(project.startDate) < new Date(current.startDate) ? project : current;
   }, undefined);
 
-  const hasFilters = Boolean(statusFilter || searchTerm);
-
-  function buildHref(nextStatus?: ProjectStatus) {
-    const params = new URLSearchParams();
-    if (nextStatus) params.set('status', nextStatus);
-    if (searchTerm) params.set('q', searchTerm);
-    const query = params.toString();
-    return query ? `/projects?${query}` : '/projects';
-  }
-
-  const formattedAverageMargin = visibleProjects.length ? formatPercent(averageMargin) : '—';
+  const formattedAverageMargin = currentProjects.length ? formatPercent(averageMargin) : '—';
   const nextKickoffDate = nextKickoffProject ? formatDate(nextKickoffProject.startDate) : 'Awaiting schedule';
   const nextKickoffDetails = nextKickoffProject
     ? `Client · ${nextKickoffProject.client}`
     : 'Add a new estimate to set your next kickoff.';
-  const reviewCount = statusCounts.estimating;
-  const inFlightCount = statusCounts['in-flight'];
-  const planningCount = statusCounts.planning;
+  const reviewCount = statusCounts.estimating ?? 0;
+  const inFlightCount = statusCounts['in-flight'] ?? 0;
+  const planningCount = statusCounts.planning ?? 0;
   const resultsLabel = hasFilters
-    ? `${visibleProjects.length} of ${totalActive} results`
-    : `${visibleProjects.length} results`;
-  const lastUpdatedDisplay = lastUpdated ? formatDate(lastUpdated) : 'Awaiting updates';
+    ? `${totalItems} of ${denominator || totalItems} results`
+    : `${totalItems} results`;
+  const lastUpdatedDisplay = lastSyncedAt ? formatDate(lastSyncedAt) : 'Awaiting updates';
 
   return (
     <DashboardShell className="space-y-12">
@@ -269,9 +205,11 @@ export default async function ProjectsPage({
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold">
-              {visibleProjects.length}
+              {totalItems}
               {hasFilters ? (
-                <span className="ml-1 text-base font-medium text-muted-foreground">/ {totalActive}</span>
+                <span className="ml-1 text-base font-medium text-muted-foreground">
+                  / {denominator || totalItems}
+                </span>
               ) : null}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -315,215 +253,16 @@ export default async function ProjectsPage({
 
       <section className="grid gap-8 xl:grid-cols-[minmax(0,2.3fr)_minmax(0,1fr)]">
         <div className="space-y-6">
-          <section className="rounded-2xl border border-border/70 bg-card/60 p-5 shadow-sm backdrop-blur">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <form className="relative w-full lg:max-w-md" method="get">
-                {statusFilter ? <input type="hidden" name="status" value={statusFilter} /> : null}
-                <Search
-                  className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground"
-                  aria-hidden
-                />
-                <input
-                  aria-label="Search projects"
-                  className="h-11 w-full rounded-xl border border-border bg-background/80 pl-10 pr-4 text-sm outline-none transition focus:border-ring focus:ring-2 focus:ring-ring"
-                  defaultValue={searchTerm}
-                  name="q"
-                  placeholder="Search by project, client, or lead"
-                  type="search"
-                />
-              </form>
-              <div className="flex flex-wrap items-center gap-2">
-                {statusOptions.map((option) => {
-                  const isActive = option.value === statusFilter;
-                  return (
-                    <Link
-                      key={option.value}
-                      href={isActive ? buildHref(undefined) : buildHref(option.value)}
-                      className={cn(
-                        'flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-medium transition',
-                        isActive
-                          ? 'border-transparent bg-primary text-primary-foreground shadow-sm'
-                          : 'border-border/80 bg-background/70 text-muted-foreground hover:border-ring hover:text-foreground',
-                      )}
-                    >
-                      <span>{option.label}</span>
-                      <span className="rounded-full bg-muted/40 px-2 py-0.5 text-[11px] font-semibold leading-none text-foreground">
-                        {statusCounts[option.value]}
-                      </span>
-                    </Link>
-                  );
-                })}
-                {hasFilters ? (
-                  <Link
-                    href="/projects"
-                    className="rounded-full px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-                  >
-                    Clear
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <span className="rounded-full bg-muted/30 px-3 py-1 font-medium text-muted-foreground">
-                {resultsLabel}
-              </span>
-              <span>Last synced {lastUpdatedDisplay}</span>
-              <span className="hidden md:inline">·</span>
-              <span className="hidden md:inline">Use filters to focus on ready-to-submit work.</span>
-            </div>
-          </section>
-
-          <div className="grid gap-6">
-            {visibleProjects.map((project) => (
-              <article
-                key={project.id}
-                className="relative overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-card via-background to-background p-6 shadow-lg transition duration-300 hover:-translate-y-1 hover:shadow-2xl sm:p-8"
-              >
-                <div
-                  className="pointer-events-none absolute inset-y-0 right-[-10%] w-1/3 bg-gradient-to-l from-primary/20 via-transparent to-transparent blur-3xl"
-                  aria-hidden
-                />
-                <header className="relative z-10 flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <StatusBadge
-                        status={project.status}
-                        className="bg-transparent px-3 py-1.5 text-xs"
-                      />
-                      <span>Client · {project.client}</span>
-                    </div>
-                    <h2 className="text-2xl font-semibold text-foreground">{project.name}</h2>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
-                        {getInitials(project.owner)}
-                      </div>
-                      <div className="leading-tight text-sm">
-                        <p className="font-medium text-foreground">{project.owner}</p>
-                        <p className="text-muted-foreground">Engagement lead</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button asChild size="sm" className="shadow-sm">
-                      <Link href={`/projects/${project.id}`}>
-                        Open workspace
-                        <ArrowRight className="h-4 w-4" aria-hidden />
-                      </Link>
-                    </Button>
-                    <Button variant="outline" size="sm" className="shadow-sm">
-                      Download brief
-                    </Button>
-                  </div>
-                </header>
-
-                <div className="relative z-10 mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-border/60 bg-background/70 p-5 shadow-inner">
-                      <p className="text-xs uppercase text-muted-foreground">Estimated value</p>
-                      <p className="mt-2 text-xl font-semibold text-foreground">
-                        {formatCurrency(project.totalValue, project.currency)}
-                      </p>
-                      <span className="text-xs text-muted-foreground">Local currency</span>
-                    </div>
-                    <div className="rounded-2xl border border-border/60 bg-background/70 p-5 shadow-inner">
-                      <p className="text-xs uppercase text-muted-foreground">Margin target</p>
-                      <p className="mt-2 flex items-center gap-2 text-xl font-semibold text-success">
-                        {formatPercent(project.margin)}
-                      </p>
-                      <span className="text-xs text-muted-foreground">Guardrail aligned</span>
-                    </div>
-                    <div className="rounded-2xl border border-border/60 bg-background/70 p-5 shadow-inner">
-                      <p className="text-xs uppercase text-muted-foreground">Delivery window</p>
-                      <p className="mt-2 flex items-center gap-2 text-sm font-medium text-foreground">
-                        <CalendarRange className="h-4 w-4 text-muted-foreground" aria-hidden />
-                        {formatDate(project.startDate)}
-                        {project.endDate ? ` – ${formatDate(project.endDate)}` : ' · TBD'}
-                      </p>
-                      <span className="text-xs text-muted-foreground">Ready for scheduling</span>
-                    </div>
-                  </div>
-                  <div className="grid gap-4">
-                    <div className="rounded-2xl border border-border/60 bg-background/70 p-5 shadow-inner">
-                      <p className="text-sm font-semibold text-foreground">Latest signals</p>
-                      <ul className="mt-4 space-y-3 text-sm text-muted-foreground">
-                        <li className="relative pl-5 before:absolute before:left-0 before:top-2 before:h-2 before:w-2 before:-translate-x-1/2 before:rounded-full before:bg-success">
-                          Rate cards refreshed {formatDate(project.updatedAt)}
-                        </li>
-                        <li className="relative pl-5 before:absolute before:left-0 before:top-2 before:h-2 before:w-2 before:-translate-x-1/2 before:rounded-full before:bg-accent">
-                          Scenario optimizer ready for run
-                        </li>
-                        <li className="relative pl-5 before:absolute before:left-0 before:top-2 before:h-2 before:w-2 before:-translate-x-1/2 before:rounded-full before:bg-warning">
-                          Staffing planner flagged backfill needs
-                        </li>
-                      </ul>
-                    </div>
-                    <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-5">
-                      <p className="text-sm font-semibold text-foreground">Next steps</p>
-                      <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-                        <li>Share pricing pack with executive sponsor.</li>
-                        <li>Lock week 6 architect availability.</li>
-                        <li>Publish delivery readiness summary.</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
-                <footer className="relative z-10 mt-6 flex flex-col gap-3 rounded-2xl border border-border/60 bg-muted/20 px-5 py-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4" aria-hidden />
-                    <span>Financials refreshed {formatDate(project.updatedAt)}</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="rounded-full border border-border/70 bg-background px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {project.currency}
-                    </span>
-                    <span>
-                      {project.status === 'in-flight'
-                        ? 'Delivery underway'
-                        : 'Pre-submission checks in progress'}
-                    </span>
-                  </div>
-                </footer>
-              </article>
-            ))}
-
-            {!visibleProjects.length ? (
-              <Card className="rounded-3xl border border-dashed border-border/70 bg-muted/20 text-center shadow-sm">
-                <CardContent className="flex flex-col items-center justify-center gap-3 py-12">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <Search className="h-5 w-5" aria-hidden />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">No projects match your filters yet</p>
-                    <p className="text-xs text-muted-foreground">
-                      Try a different status or search term, or start a fresh estimate.
-                    </p>
-                  </div>
-                  <Button asChild size="sm">
-                    <Link href="/projects/create">Create estimate</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : null}
-
-            <Card className="relative overflow-hidden rounded-3xl border border-dashed border-primary/40 bg-primary/5 shadow-inner">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5" aria-hidden />
-              <CardContent className="relative z-10 flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-foreground">Need another workspace?</p>
-                  <p className="text-xs text-muted-foreground">
-                    Pull in a prior SOW, import from CRM, or let AI draft a net-new estimate in minutes.
-                  </p>
-                </div>
-                <Button asChild size="sm" variant="secondary" className="shadow-sm">
-                  <Link href="/projects/create">
-                    Launch workspace
-                    <ArrowRight className="h-4 w-4" aria-hidden />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+          <ProjectsResults
+            projects={currentProjects}
+            statusCounts={statusCounts}
+            statusFilter={statusFilter}
+            searchTerm={searchTerm}
+            hasFilters={hasFilters}
+            resultsLabel={resultsLabel}
+            meta={meta}
+            lastUpdatedLabel={lastUpdatedDisplay}
+          />
         </div>
 
         <aside className="space-y-6 xl:sticky xl:top-24">

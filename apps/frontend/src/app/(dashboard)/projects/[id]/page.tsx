@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import Link from 'next/link';
 
 import { DashboardShell } from '../../../../components/layout/dashboard-shell';
 import { Badge } from '../../../../components/ui/badge';
@@ -9,7 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from '../../../../components/ui/card';
-import { projectSummaries } from '../../../../data/mock-projects';
+import { Button } from '../../../../components/ui/button';
+import { fetchProjectSummary } from '../../../../lib/api/projects';
 import { formatCurrency, formatDate, formatPercent } from '../../../../lib/formatters';
 
 interface ProjectPageProps {
@@ -18,10 +19,32 @@ interface ProjectPageProps {
 
 export default async function ProjectDetailPage({ params }: ProjectPageProps) {
   const { id } = await params;
-  const project = projectSummaries.find((item) => item.id === id);
+  const project = await fetchProjectSummary(id);
 
   if (!project) {
-    notFound();
+    return (
+      <DashboardShell className="space-y-8">
+        <Card className="rounded-3xl border border-dashed border-border/70 bg-muted/20 shadow-none">
+          <CardHeader className="space-y-2 text-center">
+            <CardTitle className="text-2xl font-semibold text-foreground">
+              We couldn&apos;t find that workspace
+            </CardTitle>
+            <CardDescription className="text-sm text-muted-foreground">
+              The project might have been archived or never created. Spin up a new estimate or return
+              to your pipeline overview.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center gap-3">
+            <Button asChild size="sm">
+              <Link href="/projects/create">Create estimate</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/projects">Back to projects</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </DashboardShell>
+    );
   }
 
   return (

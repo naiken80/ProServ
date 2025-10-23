@@ -8,6 +8,7 @@ import {
 } from '../config/application.config';
 import { HealthModule } from '../health/health.module';
 import { PrismaModule } from '../infra/prisma/prisma.module';
+import { ProjectsModule } from '../projects/projects.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { PrismaModule } from '../infra/prisma/prisma.module';
     }),
     PrismaModule,
     HealthModule,
+    ProjectsModule,
   ],
 })
 export class AppModule {}

@@ -15,6 +15,9 @@
       "@/frontend/*": [
         "apps/frontend/src/*"
       ],
+      "@proserv/shared": [
+        "packages/shared/src/index.ts"
+      ],
       "@proserv/shared/*": [
         "packages/shared/src/*"
       ]
