@@ -13,7 +13,7 @@ export const environmentSchema = z.object({
   CORS_ALLOWED_ORIGINS: z.string().default('*'),
   CORS_ALLOWED_METHODS: z.string().default('GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS'),
   CORS_ALLOWED_HEADERS: z.string().default(
-    'Content-Type,Authorization,X-Request-Id,X-Correlation-Id',
+    'Content-Type,Authorization,X-Request-Id,X-Correlation-Id,X-Proserv-User-Id,X-Proserv-User-Email,X-Proserv-User-Name,X-Proserv-User-Roles',
   ),
   DATABASE_URL: z.string().url(),
   SHADOW_DATABASE_URL: z.string().url().optional(),

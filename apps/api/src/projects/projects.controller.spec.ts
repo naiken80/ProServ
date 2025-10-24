@@ -1,4 +1,8 @@
-import type { ProjectSummary } from '@proserv/shared';
+import type {
+  ProjectSummary,
+  ProjectWorkspace,
+  SessionUser,
+} from '@proserv/shared';
 
 import { ProjectsController } from './projects.controller';
 import type { ProjectsService } from './projects.service';
@@ -6,6 +10,13 @@ import type { ProjectsService } from './projects.service';
 describe('ProjectsController', () => {
   let controller: ProjectsController;
   let service: jest.Mocked<ProjectsService>;
+  const user: SessionUser = {
+    id: 'user-1',
+    email: 'user@example.com',
+    givenName: 'Casey',
+    familyName: 'Vega',
+    roles: [],
+  };
 
   const summary: ProjectSummary = {
     id: 'proj-1',
@@ -15,6 +26,7 @@ describe('ProjectsController', () => {
     status: 'planning',
     startDate: '2024-07-01',
     endDate: undefined,
+    billingModel: 'TIME_AND_MATERIAL',
     totalValue: 0,
     currency: 'USD',
     margin: 0,
@@ -25,6 +37,7 @@ describe('ProjectsController', () => {
     service = {
       getProjectSummaries: jest.fn(),
       getProjectSummary: jest.fn(),
+      getProjectWorkspace: jest.fn(),
       createProject: jest.fn(),
       updateProject: jest.fn(),
     } as unknown as jest.Mocked<ProjectsService>;
@@ -36,17 +49,45 @@ describe('ProjectsController', () => {
     const payload = { data: [summary] };
     service.getProjectSummaries.mockResolvedValue(payload as never);
 
-    const result = await controller.getProjectSummaries({} as never);
-    expect(service.getProjectSummaries).toHaveBeenCalledWith({});
+    const result = await controller.getProjectSummaries(user, {} as never);
+    expect(service.getProjectSummaries).toHaveBeenCalledWith(user, {});
     expect(result).toEqual(payload);
   });
 
-  it('retrieves a project summary by id', async () => {
-    service.getProjectSummary.mockResolvedValue(summary);
+  it('retrieves project workspace details by id', async () => {
+    const workspace: ProjectWorkspace = {
+      summary,
+      baseline: {
+        id: 'ver-1',
+        name: 'Baseline',
+        versionNumber: 1,
+        status: 'DRAFT',
+        updatedAt: '2024-07-01T00:00:00.000Z',
+        rateCardName: 'Global Delivery Standard',
+        rateCardId: 'card-1',
+        rateCard: {
+          id: 'card-1',
+          organizationId: 'org-1',
+          name: 'Global Delivery Standard',
+          currency: 'USD',
+          validFrom: null,
+          validTo: null,
+          createdAt: '2024-07-01T00:00:00.000Z',
+          updatedAt: '2024-07-01T00:00:00.000Z',
+          entries: [],
+        },
+        totalValue: 0,
+        totalCost: 0,
+        margin: 0,
+        currency: 'USD',
+        assignmentCount: 0,
+      },
+    };
+    service.getProjectWorkspace.mockResolvedValue(workspace);
 
-    const result = await controller.getProjectSummary('proj-1');
-    expect(service.getProjectSummary).toHaveBeenCalledWith('proj-1');
-    expect(result).toEqual(summary);
+    const result = await controller.getProjectWorkspace(user, 'proj-1');
+    expect(service.getProjectWorkspace).toHaveBeenCalledWith(user, 'proj-1');
+    expect(result).toEqual(workspace);
   });
 
   it('creates a project using the service', async () => {
@@ -60,9 +101,9 @@ describe('ProjectsController', () => {
       billingModel: 'TIME_AND_MATERIAL',
     };
 
-    const result = await controller.createProject(dto as never);
+    const result = await controller.createProject(user, dto as never);
 
-    expect(service.createProject).toHaveBeenCalledWith(dto);
+    expect(service.createProject).toHaveBeenCalledWith(user, dto);
     expect(result).toEqual(summary);
   });
 
@@ -70,9 +111,9 @@ describe('ProjectsController', () => {
     service.updateProject.mockResolvedValue(summary);
 
     const dto = { name: 'Updated' };
-    const result = await controller.updateProject('proj-1', dto as never);
+    const result = await controller.updateProject(user, 'proj-1', dto as never);
 
-    expect(service.updateProject).toHaveBeenCalledWith('proj-1', dto);
+    expect(service.updateProject).toHaveBeenCalledWith(user, 'proj-1', dto);
     expect(result).toEqual(summary);
   });
 });

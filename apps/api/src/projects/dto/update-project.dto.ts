@@ -6,6 +6,7 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 import { BillingModel } from '@prisma/client';
@@ -66,4 +67,17 @@ export class UpdateProjectDto {
   @IsOptional()
   @MaxLength(120)
   baselineVersionName?: string;
+
+  @Transform(({ value }) =>
+    value === null
+      ? null
+      : typeof value === 'string'
+        ? value.trim() || undefined
+        : undefined,
+  )
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MinLength(1)
+  @IsOptional()
+  baselineRateCardId?: string | null;
 }

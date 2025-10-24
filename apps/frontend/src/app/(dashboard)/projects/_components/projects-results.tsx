@@ -7,6 +7,7 @@ import {
   useTransition,
   type FormEvent,
 } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   usePathname,
@@ -45,6 +46,7 @@ type ProjectsResultsProps = {
   resultsLabel: string;
   meta: ProjectSummariesResponse['meta'];
   lastUpdatedLabel: string;
+  lastUpdated: string | null;
 };
 
 function StatusBadge({
@@ -156,16 +158,41 @@ export function ProjectsResults({
   resultsLabel,
   meta,
   lastUpdatedLabel,
+  lastUpdated,
 }: ProjectsResultsProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [query, setQuery] = useState(searchTerm);
+  const queryClient = useQueryClient();
+
+  const queryKey = useMemo(
+    () =>
+      [
+        'projects',
+        {
+          search: searchTerm || '',
+          status: statusFilter ?? null,
+          page: meta.page,
+          pageSize: meta.pageSize,
+        },
+      ] as const,
+    [searchTerm, statusFilter, meta.page, meta.pageSize],
+  );
 
   useEffect(() => {
     setQuery(searchTerm);
   }, [searchTerm]);
+
+  useEffect(() => {
+    queryClient.setQueryData(queryKey, {
+      data: projects,
+      meta,
+      counts: statusCounts,
+      lastUpdated,
+    });
+  }, [queryClient, queryKey, projects, meta, statusCounts, lastUpdated]);
 
   const totalPages = meta.totalPages;
   const page = meta.page;

@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+import { SessionProvider } from '@/frontend/lib/session-context';
+
 import { CreateProjectForm } from '@/frontend/app/(dashboard)/projects/create/create-project-form';
 import type { BillingModelOption } from '@/frontend/app/(dashboard)/projects/create/constants';
 
@@ -30,6 +32,18 @@ const billingModels: BillingModelOption[] = [
   },
 ];
 
+const mockSession = {
+  id: 'user-1',
+  email: 'user@example.com',
+  givenName: 'Casey',
+  familyName: 'Vega',
+  roles: [],
+};
+
+function renderWithSession(ui: React.ReactElement) {
+  return render(<SessionProvider session={mockSession}>{ui}</SessionProvider>);
+}
+
 describe('CreateProjectForm', () => {
   beforeEach(() => {
     createProjectMock.mockReset();
@@ -37,9 +51,22 @@ describe('CreateProjectForm', () => {
   });
 
   it('submits the form and redirects to the new project', async () => {
-    createProjectMock.mockResolvedValue({ id: 'proj-99' });
+    createProjectMock.mockResolvedValue({
+      id: 'proj-99',
+      name: 'New Workspace',
+      client: 'Acme Corp',
+      owner: 'Casey Vega',
+      status: 'planning',
+      startDate: '2024-07-01',
+      endDate: undefined,
+      billingModel: 'TIME_AND_MATERIAL',
+      totalValue: 0,
+      currency: 'EUR',
+      margin: 0,
+      updatedAt: '2024-07-01T00:00:00.000Z',
+    });
 
-    render(<CreateProjectForm billingModels={billingModels} />);
+    renderWithSession(<CreateProjectForm billingModels={billingModels} />);
 
     fireEvent.change(screen.getByLabelText('Project name'), {
       target: { value: 'New Workspace' },
@@ -57,7 +84,7 @@ describe('CreateProjectForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /Launch workspace/i }));
 
     await waitFor(() => {
-      expect(createProjectMock).toHaveBeenCalledWith({
+      expect(createProjectMock).toHaveBeenCalledWith(mockSession, {
         name: 'New Workspace',
         clientName: 'Acme Corp',
         startDate: '2024-07-01',
@@ -72,7 +99,7 @@ describe('CreateProjectForm', () => {
   it('surfaces API errors to the user', async () => {
     createProjectMock.mockRejectedValue(new Error('Request failed'));
 
-    render(<CreateProjectForm billingModels={billingModels} />);
+    renderWithSession(<CreateProjectForm billingModels={billingModels} />);
 
     fireEvent.change(screen.getByLabelText('Project name'), {
       target: { value: 'New Workspace' },

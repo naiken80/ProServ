@@ -6,9 +6,12 @@ import {
   loadApplicationSettings,
   validateEnvironment,
 } from '../config/application.config';
+import { BootstrapModule } from '../bootstrap/bootstrap.module';
 import { HealthModule } from '../health/health.module';
 import { PrismaModule } from '../infra/prisma/prisma.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { RateCardsModule } from '../rate-cards/rate-cards.module';
+import { RolesModule } from '../roles/roles.module';
 
 @Module({
   imports: [
@@ -45,8 +48,11 @@ import { ProjectsModule } from '../projects/projects.module';
       }),
     }),
     PrismaModule,
+    BootstrapModule,
     HealthModule,
     ProjectsModule,
+    RateCardsModule,
+    RolesModule,
   ],
 })
 export class AppModule {}

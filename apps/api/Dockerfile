@@ -15,6 +15,7 @@ COPY apps/api ./apps/api
 RUN pnpm install --frozen-lockfile --prod=false
 RUN pnpm exec prisma generate
 RUN pnpm nx build shared
+RUN mkdir -p node_modules/@proserv && cp -R dist/packages/shared node_modules/@proserv/shared
 RUN pnpm nx build api
 
 FROM node:22-alpine AS runtime

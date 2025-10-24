@@ -1,9 +1,18 @@
 import 'server-only';
 
-import { projectSummarySchema } from '@proserv/shared';
+import { projectSummarySchema, projectWorkspaceSchema, type SessionUser } from '@proserv/shared';
 import { z } from 'zod';
 
+import { buildSessionHeaders } from '../session-headers';
+import { getServerSession } from '../session.server';
+
+const internalApiUrl =
+  process.env.API_INTERNAL_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  'http://localhost:4000/api';
+
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+export type ProjectWorkspace = z.infer<typeof projectWorkspaceSchema>;
 export type PipelineStatus = ProjectSummary['status'];
 
 const projectSummariesResponseSchema = z.object({
@@ -37,10 +46,9 @@ export type FetchProjectSummariesInput = {
 
 export async function fetchProjectSummaries(
   params: FetchProjectSummariesInput = {},
+  session?: SessionUser,
 ): Promise<ProjectSummariesResponse> {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-  const normalizedBase = baseUrl.replace(/\/$/, '');
+  const normalizedBase = internalApiUrl.replace(/\/$/, '');
   const endpoint = new URL(`${normalizedBase}/v1/projects`);
   const query = new URLSearchParams();
 
@@ -65,8 +73,11 @@ export async function fetchProjectSummaries(
     endpoint.search = query.toString();
   }
 
+  const activeSession = session ?? getServerSession();
+
   const response = await fetch(endpoint.toString(), {
     cache: 'no-store',
+    headers: buildSessionHeaders(activeSession),
   });
 
   if (!response.ok) {
@@ -79,16 +90,18 @@ export async function fetchProjectSummaries(
 
 export async function fetchProjectSummary(
   id: string,
+  session?: SessionUser,
 ): Promise<ProjectSummary | null> {
   if (!id) return null;
 
-  const baseUrl =
-    process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-  const normalizedBase = baseUrl.replace(/\/$/, '');
+  const normalizedBase = internalApiUrl.replace(/\/$/, '');
   const endpoint = `${normalizedBase}/v1/projects/${encodeURIComponent(id)}`;
+
+  const activeSession = session ?? getServerSession();
 
   const response = await fetch(endpoint, {
     cache: 'no-store',
+    headers: buildSessionHeaders(activeSession),
   });
 
   if (response.status === 404) {
@@ -101,4 +114,32 @@ export async function fetchProjectSummary(
 
   const payload = await response.json();
   return projectSummarySchema.parse(payload);
+}
+
+export async function fetchProjectWorkspace(
+  id: string,
+  session?: SessionUser,
+) {
+  if (!id) return null;
+
+  const normalizedBase = internalApiUrl.replace(/\/$/, '');
+  const endpoint = `${normalizedBase}/v1/projects/${encodeURIComponent(id)}`;
+
+  const activeSession = session ?? getServerSession();
+
+  const response = await fetch(endpoint, {
+    cache: 'no-store',
+    headers: buildSessionHeaders(activeSession),
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch project workspace');
+  }
+
+  const payload = await response.json();
+  return projectWorkspaceSchema.parse(payload);
 }

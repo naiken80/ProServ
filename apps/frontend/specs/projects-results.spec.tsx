@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { ProjectsResults } from '@/frontend/app/(dashboard)/projects/_components/projects-results';
@@ -24,6 +25,11 @@ const baseMeta: ProjectSummariesResponse['meta'] = {
   totalAll: 1,
 };
 
+function renderWithQuery(ui: React.ReactElement) {
+  const queryClient = new QueryClient();
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
+
 const sampleProject: ProjectSummary = {
   id: 'proj-1',
   name: 'Global ERP Modernization',
@@ -32,6 +38,7 @@ const sampleProject: ProjectSummary = {
   status: 'planning',
   startDate: '2024-06-01T00:00:00.000Z',
   endDate: '2024-12-01T00:00:00.000Z',
+  billingModel: 'TIME_AND_MATERIAL',
   totalValue: 4_125_000,
   currency: 'USD',
   margin: 0.32,
@@ -51,7 +58,7 @@ describe('ProjectsResults', () => {
   });
 
   it('renders project summaries with status badges and metrics', () => {
-    render(
+    renderWithQuery(
       <ProjectsResults
         projects={[sampleProject]}
         statusCounts={statusCounts}
@@ -61,6 +68,7 @@ describe('ProjectsResults', () => {
         resultsLabel="1 results"
         meta={baseMeta}
         lastUpdatedLabel="Jun 2, 2024"
+        lastUpdated="2024-06-02T08:30:00.000Z"
       />,
     );
 
@@ -73,7 +81,7 @@ describe('ProjectsResults', () => {
   });
 
   it('shows an empty state when there are no matching projects', () => {
-    render(
+    renderWithQuery(
       <ProjectsResults
         projects={[]}
         statusCounts={{ planning: 0, estimating: 0, 'in-flight': 0 }}
@@ -83,6 +91,7 @@ describe('ProjectsResults', () => {
         resultsLabel="0 results"
         meta={{ ...baseMeta, totalItems: 0, totalMatchingSearch: 0, totalAll: 0 }}
         lastUpdatedLabel="Awaiting updates"
+        lastUpdated={null}
       />,
     );
 
@@ -95,7 +104,7 @@ describe('ProjectsResults', () => {
   });
 
   it('encourages project creation when the workspace is empty', () => {
-    render(
+    renderWithQuery(
       <ProjectsResults
         projects={[]}
         statusCounts={{ planning: 0, estimating: 0, 'in-flight': 0 }}
@@ -105,6 +114,7 @@ describe('ProjectsResults', () => {
         resultsLabel="0 results"
         meta={{ ...baseMeta, totalItems: 0, totalMatchingSearch: 0, totalAll: 0 }}
         lastUpdatedLabel="Awaiting updates"
+        lastUpdated={null}
       />,
     );
 
@@ -117,7 +127,7 @@ describe('ProjectsResults', () => {
   });
 
   it('applies status filters via router navigation', () => {
-    render(
+    renderWithQuery(
       <ProjectsResults
         projects={[sampleProject]}
         statusCounts={statusCounts}
@@ -127,6 +137,7 @@ describe('ProjectsResults', () => {
         resultsLabel="1 results"
         meta={baseMeta}
         lastUpdatedLabel="Jun 2, 2024"
+        lastUpdated="2024-06-02T08:30:00.000Z"
       />,
     );
 
@@ -135,7 +146,7 @@ describe('ProjectsResults', () => {
   });
 
   it('navigates between pages', () => {
-    render(
+    renderWithQuery(
       <ProjectsResults
         projects={[sampleProject]}
         statusCounts={statusCounts}
@@ -145,6 +156,7 @@ describe('ProjectsResults', () => {
         resultsLabel="1 results"
         meta={{ ...baseMeta, totalPages: 3, totalItems: 3 }}
         lastUpdatedLabel="Jun 2, 2024"
+        lastUpdated="2024-06-02T08:30:00.000Z"
       />,
     );
 

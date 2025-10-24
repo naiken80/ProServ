@@ -262,6 +262,7 @@ export default async function ProjectsPage({
             resultsLabel={resultsLabel}
             meta={meta}
             lastUpdatedLabel={lastUpdatedDisplay}
+            lastUpdated={lastSyncedAt}
           />
         </div>
 

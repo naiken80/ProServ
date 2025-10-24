@@ -1,6 +1,7 @@
 import { type Metadata, type Viewport } from 'next';
 import { Inter } from 'next/font/google';
 
+import { getServerSession } from '../lib/session.server';
 import { cn } from '../lib/utils';
 
 import { AppProviders } from './providers';
@@ -22,10 +23,12 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = getServerSession();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={cn('min-h-screen bg-background font-sans text-foreground', fontSans.variable)}>
-        <AppProviders>{children}</AppProviders>
+        <AppProviders session={session}>{children}</AppProviders>
       </body>
     </html>
   );

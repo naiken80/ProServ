@@ -6,6 +6,7 @@ export type ProjectSummary = {
   status: 'planning' | 'estimating' | 'in-flight';
   startDate: string;
   endDate?: string;
+  billingModel: 'TIME_AND_MATERIAL' | 'FIXED_PRICE' | 'RETAINER' | 'MANAGED_SERVICE';
   totalValue: number;
   margin: number;
   currency: string;
@@ -21,6 +22,7 @@ export const projectSummaries: ProjectSummary[] = [
     status: 'estimating',
     startDate: '2024-11-01',
     endDate: '2025-07-15',
+    billingModel: 'TIME_AND_MATERIAL',
     totalValue: 4125000,
     margin: 0.32,
     currency: 'USD',
@@ -33,6 +35,7 @@ export const projectSummaries: ProjectSummary[] = [
     owner: 'Marcus Chen',
     status: 'planning',
     startDate: '2025-01-08',
+    billingModel: 'FIXED_PRICE',
     totalValue: 2750000,
     margin: 0.28,
     currency: 'SGD',
@@ -46,6 +49,7 @@ export const projectSummaries: ProjectSummary[] = [
     status: 'in-flight',
     startDate: '2024-05-12',
     endDate: '2024-12-22',
+    billingModel: 'RETAINER',
     totalValue: 1980000,
     margin: 0.35,
     currency: 'GBP',

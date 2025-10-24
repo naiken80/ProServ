@@ -7,6 +7,7 @@ import { Calendar, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/frontend/components/ui/button';
 
 import { createProject } from '@/frontend/lib/client/projects';
+import { useSession } from '@/frontend/lib/session-context';
 
 import type { BillingModelOption } from './constants';
 
@@ -18,6 +19,7 @@ export function CreateProjectForm({
   billingModels,
 }: CreateProjectFormProps) {
   const router = useRouter();
+  const session = useSession();
   const [name, setName] = useState('');
   const [clientName, setClientName] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -34,7 +36,7 @@ export function CreateProjectForm({
     setError(null);
 
     try {
-      const summary = await createProject({
+      const summary = await createProject(session, {
         name,
         clientName,
         startDate,

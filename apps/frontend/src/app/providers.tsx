@@ -5,9 +5,15 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ThemeProvider } from 'next-themes';
 import { useState } from 'react';
 
+import type { SessionUser } from '@proserv/shared';
+
+import { SessionProvider } from '../lib/session-context';
+
 import type { PropsWithChildren } from 'react';
 
-export function AppProviders({ children }: PropsWithChildren) {
+type AppProvidersProps = PropsWithChildren<{ session: SessionUser }>;
+
+export function AppProviders({ children, session }: AppProvidersProps) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -27,8 +33,14 @@ export function AppProviders({ children }: PropsWithChildren) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <QueryClientProvider client={queryClient}>
-        {children}
-        {process.env.NODE_ENV !== 'production' ? <ReactQueryDevtools initialIsOpen={false} /> : null}
+        <SessionProvider session={session}>{children}</SessionProvider>
+        {process.env.NODE_ENV !== 'production' ? (
+          <ReactQueryDevtools
+            initialIsOpen={false}
+            buttonPosition="bottom-right"
+            position="right"
+          />
+        ) : null}
       </QueryClientProvider>
     </ThemeProvider>
   );
