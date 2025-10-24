@@ -62,6 +62,7 @@ model Role {
   userRoles      UserRole[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+  archivedAt     DateTime?
 
   @@unique([organizationId, code])
 }
@@ -76,6 +77,7 @@ model RateCard {
   validTo        DateTime?
   entries        RateCardRole[]
   versions       EstimateVersion[]
+  baselineProjects Project[]    @relation("ProjectBaselineRateCard")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -118,6 +120,8 @@ model Project {
   startDate      DateTime
   endDate        DateTime?
   billingModel   BillingModel
+  baselineRateCard   RateCard?     @relation("ProjectBaselineRateCard", fields: [baselineRateCardId], references: [id])
+  baselineRateCardId String?
   status         ProjectStatus @default(DRAFT)
   versions       EstimateVersion[]
   createdBy      User          @relation("ProjectCreatedBy", fields: [createdById], references: [id])

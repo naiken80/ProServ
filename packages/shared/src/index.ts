@@ -54,11 +54,25 @@ export const roleSchema = z.object({
   organizationId: z.string(),
   code: z.string(),
   name: z.string(),
-  description: z.string().optional(),
+  description: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  archivedAt: z.string().datetime().nullable(),
 });
 export type Role = z.infer<typeof roleSchema>;
 
+export const roleCollectionSchema = z.object({
+  data: z.array(roleSchema),
+  meta: z.object({
+    total: z.number().nonnegative(),
+    activeCount: z.number().nonnegative(),
+    archivedCount: z.number().nonnegative(),
+  }),
+});
+export type RoleCollection = z.infer<typeof roleCollectionSchema>;
+
 export const rateCardEntrySchema = z.object({
+  id: z.string().optional(),
   roleId: z.string(),
   currency: z.string().min(3),
   billRate: z.number().nonnegative(),
@@ -66,16 +80,38 @@ export const rateCardEntrySchema = z.object({
 });
 export type RateCardEntry = z.infer<typeof rateCardEntrySchema>;
 
+export const rateCardRoleInfoSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+});
+export type RateCardRoleInfo = z.infer<typeof rateCardRoleInfoSchema>;
+
+export const rateCardEntryDetailSchema = rateCardEntrySchema.extend({
+  id: z.string(),
+  role: rateCardRoleInfoSchema,
+});
+export type RateCardEntryDetail = z.infer<typeof rateCardEntryDetailSchema>;
+
 export const rateCardSchema = z.object({
   id: z.string(),
   organizationId: z.string(),
   name: z.string(),
   currency: z.string().min(3),
-  validFrom: z.string().datetime().optional(),
-  validTo: z.string().datetime().optional(),
-  entries: z.array(rateCardEntrySchema),
+  validFrom: z.string().datetime().nullable(),
+  validTo: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  entries: z.array(rateCardEntryDetailSchema),
 });
 export type RateCard = z.infer<typeof rateCardSchema>;
+
+export const rateCardCollectionSchema = z.object({
+  data: z.array(rateCardSchema),
+  roles: z.array(rateCardRoleInfoSchema),
+});
+export type RateCardCollection = z.infer<typeof rateCardCollectionSchema>;
 
 export const fxRateSchema = z.object({
   baseCurrency: z.string().min(3),
@@ -233,6 +269,7 @@ export const projectSchema = z.object({
   ownerId: z.string(),
   baseCurrency: z.string().min(3),
   billingModel: billingModelSchema,
+  baselineRateCardId: z.string().nullable().optional(),
   status: projectStatusSchema,
   startDate: z.string().date(),
   endDate: z.string().date().optional(),
@@ -248,12 +285,47 @@ export const projectSummarySchema = z.object({
   status: z.enum(['planning', 'estimating', 'in-flight']),
   startDate: z.string().date(),
   endDate: z.string().date().optional(),
+  billingModel: billingModelSchema,
   totalValue: z.number().nonnegative(),
   currency: z.string().min(3),
   margin: z.number(),
   updatedAt: z.string().datetime(),
 });
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+
+export const projectBaselineSnapshotSchema = z.object({
+  id: z.string(),
+  versionNumber: z.number().int().positive(),
+  name: z.string(),
+  status: estimateVersionStatusSchema,
+  updatedAt: z.string().datetime(),
+  rateCardId: z.string().nullable(),
+  rateCardName: z.string().optional(),
+  rateCard: rateCardSchema.nullable(),
+  totalValue: z.number().nonnegative(),
+  totalCost: z.number().nonnegative(),
+  margin: z.number(),
+  currency: z.string().min(3),
+  assignmentCount: z.number().int().nonnegative(),
+});
+export type ProjectBaselineSnapshot = z.infer<
+  typeof projectBaselineSnapshotSchema
+>;
+
+export const projectWorkspaceSchema = z.object({
+  summary: projectSummarySchema,
+  baseline: projectBaselineSnapshotSchema.nullable(),
+});
+export type ProjectWorkspace = z.infer<typeof projectWorkspaceSchema>;
+
+export const sessionUserSchema = z.object({
+  id: z.string().min(1),
+  email: z.string().email(),
+  givenName: z.string().optional(),
+  familyName: z.string().optional(),
+  roles: z.array(z.string()).default([]),
+});
+export type SessionUser = z.infer<typeof sessionUserSchema>;
 
 export const environmentConfigSchema = z.object({
   apiUrl: z.string().url(),
@@ -274,7 +346,12 @@ export const sharedSchemas = {
   organizationSchema,
   userSchema,
   roleSchema,
+  roleCollectionSchema,
+  rateCardRoleInfoSchema,
+  rateCardEntrySchema,
+  rateCardEntryDetailSchema,
   rateCardSchema,
+  rateCardCollectionSchema,
   fxRateSchema,
   timePhasedWeekSchema,
   assignmentSchema,
@@ -288,5 +365,8 @@ export const sharedSchemas = {
   estimateVersionSchema,
   projectSchema,
   projectSummarySchema,
+  projectBaselineSnapshotSchema,
+  projectWorkspaceSchema,
+  sessionUserSchema,
   environmentConfigSchema,
 };

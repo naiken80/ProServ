@@ -5,7 +5,11 @@ import {
 } from '@nestjs/common';
 import { Prisma, ProjectStatus } from '@prisma/client';
 
-import type { ProjectSummary } from '@proserv/shared';
+import type {
+  ProjectSummary,
+  ProjectWorkspace,
+  SessionUser,
+} from '@proserv/shared';
 
 import { PrismaService } from '../infra/prisma/prisma.service';
 
@@ -33,11 +37,20 @@ type ProjectWithRelations = Prisma.ProjectGetPayload<{
   };
 }>;
 
+type FinancialAggregate = {
+  bill: number;
+  cost: number;
+  assignmentCount: number;
+};
+
 @Injectable()
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getProjectSummaries(query: GetProjectSummariesDto) {
+  async getProjectSummaries(
+    user: SessionUser,
+    query: GetProjectSummariesDto,
+  ) {
     const pageSize = query.pageSize ?? 6;
     const requestedPage = query.page ?? 1;
     const searchTerm = query.search ?? '';
@@ -47,6 +60,7 @@ export class ProjectsService {
       status: {
         not: ProjectStatus.ARCHIVED,
       },
+      createdById: user.id,
     };
 
     const searchWhere: Prisma.ProjectWhereInput = {
@@ -153,13 +167,17 @@ export class ProjectsService {
     };
   }
 
-  async getProjectSummary(projectId: string): Promise<ProjectSummary> {
+  async getProjectSummary(
+    user: SessionUser,
+    projectId: string,
+  ): Promise<ProjectSummary> {
     const project = await this.prisma.project.findFirst({
       where: {
         id: projectId,
         status: {
           not: ProjectStatus.ARCHIVED,
         },
+        createdById: user.id,
       },
       include: this.projectInclude,
     });
@@ -172,17 +190,150 @@ export class ProjectsService {
     return summary;
   }
 
-  async createProject(dto: CreateProjectDto): Promise<ProjectSummary> {
+  async getProjectWorkspace(
+    user: SessionUser,
+    projectId: string,
+  ): Promise<ProjectWorkspace> {
+    const project = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        status: {
+          not: ProjectStatus.ARCHIVED,
+        },
+        createdById: user.id,
+      },
+      include: this.projectInclude,
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    const [summary] = await this.buildSummaries([project]);
+
+    const baselineVersion = await this.prisma.estimateVersion.findFirst({
+      where: { projectId, versionNumber: 1 },
+      select: {
+        id: true,
+        name: true,
+        versionNumber: true,
+        status: true,
+        updatedAt: true,
+        rateCardId: true,
+        rateCard: {
+          select: {
+            id: true,
+            name: true,
+            currency: true,
+            organizationId: true,
+            validFrom: true,
+            validTo: true,
+            createdAt: true,
+            updatedAt: true,
+            entries: {
+              include: {
+                role: {
+                  select: {
+                    id: true,
+                    code: true,
+                    name: true,
+                    description: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!baselineVersion) {
+      return { summary, baseline: null };
+    }
+
+    const financials = await this.collectFinancials([
+      baselineVersion.id,
+    ]);
+    const aggregates =
+      financials.get(baselineVersion.id) ?? {
+        bill: 0,
+        cost: 0,
+        assignmentCount: 0,
+      };
+
+    const totalValue = aggregates.bill;
+    const totalCost = aggregates.cost;
+    const margin =
+      totalValue > 0 ? (totalValue - totalCost) / totalValue : 0;
+
+    const rateCard =
+      baselineVersion.rateCardId && baselineVersion.rateCard
+        ? {
+            id: baselineVersion.rateCard.id,
+            name: baselineVersion.rateCard.name,
+            currency: baselineVersion.rateCard.currency,
+            organizationId: baselineVersion.rateCard.organizationId,
+            validFrom:
+              baselineVersion.rateCard.validFrom?.toISOString() ?? null,
+            validTo:
+              baselineVersion.rateCard.validTo?.toISOString() ?? null,
+            createdAt: baselineVersion.rateCard.createdAt.toISOString(),
+            updatedAt: baselineVersion.rateCard.updatedAt.toISOString(),
+            entries: baselineVersion.rateCard.entries
+              .slice()
+              .sort((a, b) => a.role.name.localeCompare(b.role.name))
+              .map((entry) => ({
+                id: entry.id,
+                roleId: entry.roleId,
+                currency: entry.currency,
+                billRate: this.toNumber(entry.billRate),
+                costRate: this.toNumber(entry.costRate),
+                role: {
+                  id: entry.role.id,
+                  code: entry.role.code,
+                  name: entry.role.name,
+                  description: entry.role.description ?? null,
+                },
+              })),
+          }
+        : null;
+
+    return {
+      summary,
+      baseline: {
+        id: baselineVersion.id,
+        name: baselineVersion.name,
+        versionNumber: baselineVersion.versionNumber,
+        status: baselineVersion.status,
+        updatedAt: baselineVersion.updatedAt.toISOString(),
+        rateCardId: baselineVersion.rateCardId ?? null,
+        rateCardName: rateCard?.name,
+        rateCard,
+        totalValue,
+        totalCost,
+        margin,
+        currency: summary.currency,
+        assignmentCount: aggregates.assignmentCount,
+      },
+    };
+  }
+
+  async createProject(
+    user: SessionUser,
+    dto: CreateProjectDto,
+  ): Promise<ProjectSummary> {
     const organizationId = await this.ensurePrimaryOrganizationId(
       dto.baseCurrency,
     );
-    const ownerId = await this.ensureDefaultOwnerId(organizationId);
+    const ownerId = await this.ensureSessionUserRecord(user, organizationId);
 
     const startDate = new Date(dto.startDate);
     const endDate =
       dto.endDate === undefined ? undefined : new Date(dto.endDate);
 
     const baselineVersionName = dto.baselineVersionName ?? 'Baseline';
+    const defaultRateCardId =
+      await this.findDefaultRateCardId(organizationId);
 
     const created = await this.prisma.project.create({
       data: {
@@ -194,10 +345,14 @@ export class ProjectsService {
         billingModel: dto.billingModel,
         startDate,
         endDate,
+        baselineRateCardId: defaultRateCardId ?? undefined,
         versions: {
           create: {
             name: baselineVersionName,
             versionNumber: 1,
+            ...(defaultRateCardId
+              ? { rateCardId: defaultRateCardId }
+              : {}),
             fxSnapshot: [],
           },
         },
@@ -205,14 +360,15 @@ export class ProjectsService {
       select: { id: true },
     });
 
-    return this.getProjectSummary(created.id);
+    return this.getProjectSummary(user, created.id);
   }
 
   async updateProject(
+    user: SessionUser,
     id: string,
     dto: UpdateProjectDto,
   ): Promise<ProjectSummary> {
-    const projectUpdates: Prisma.ProjectUpdateInput = {};
+    const projectUpdates: Prisma.ProjectUncheckedUpdateInput = {};
 
     if (dto.name !== undefined) {
       projectUpdates.name = dto.name;
@@ -240,41 +396,69 @@ export class ProjectsService {
     }
 
     const hasProjectChanges = Object.keys(projectUpdates).length > 0;
+    const wantsRateCardUpdate = dto.baselineRateCardId !== undefined;
 
-    if (!hasProjectChanges && !dto.baselineVersionName) {
+    if (!hasProjectChanges && !dto.baselineVersionName && !wantsRateCardUpdate) {
       throw new BadRequestException('No fields provided to update');
     }
 
-    if (hasProjectChanges) {
-      try {
-        await this.prisma.project.update({
-          where: { id },
-          data: projectUpdates,
+    const existing = await this.prisma.project.findFirst({
+      where: {
+        id,
+        createdById: user.id,
+        status: {
+          not: ProjectStatus.ARCHIVED,
+        },
+      },
+      select: { id: true, organizationId: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Project not found');
+    }
+
+    let normalizedRateCardId: string | null = null;
+
+    if (wantsRateCardUpdate) {
+      const rateCardValue = dto.baselineRateCardId ?? null;
+      const trimmed =
+        rateCardValue === null ? null : rateCardValue.trim();
+      const candidate =
+        trimmed && trimmed.length > 0 ? trimmed : null;
+
+      if (candidate) {
+        const rateCard = await this.prisma.rateCard.findFirst({
+          where: {
+            id: candidate,
+            organizationId: existing.organizationId,
+          },
           select: { id: true },
         });
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2025'
-        ) {
-          throw new NotFoundException('Project not found');
+
+        if (!rateCard) {
+          throw new BadRequestException('Rate card not found');
         }
-        throw error;
+
+        normalizedRateCardId = rateCard.id;
+      } else {
+        normalizedRateCardId = null;
       }
-    } else {
-      const existing = await this.prisma.project.findFirst({
-        where: {
-          id,
-          status: {
-            not: ProjectStatus.ARCHIVED,
-          },
-        },
+    }
+
+    const updateData: Prisma.ProjectUncheckedUpdateInput = {
+      ...projectUpdates,
+    };
+
+    if (wantsRateCardUpdate) {
+      updateData.baselineRateCardId = normalizedRateCardId;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await this.prisma.project.update({
+        where: { id },
+        data: updateData,
         select: { id: true },
       });
-
-      if (!existing) {
-        throw new NotFoundException('Project not found');
-      }
     }
 
     if (dto.baselineVersionName) {
@@ -284,7 +468,14 @@ export class ProjectsService {
       });
     }
 
-    return this.getProjectSummary(id);
+    if (wantsRateCardUpdate) {
+      await this.prisma.estimateVersion.updateMany({
+        where: { projectId: id, versionNumber: 1 },
+        data: { rateCardId: normalizedRateCardId ?? null },
+      });
+    }
+
+    return this.getProjectSummary(user, id);
   }
 
   private pipelineStatusWhere(status: PipelineStatus): Prisma.ProjectWhereInput {
@@ -340,10 +531,15 @@ export class ProjectsService {
     return created.id;
   }
 
-  private async ensureDefaultOwnerId(organizationId: string): Promise<string> {
+  private async ensureSessionUserRecord(
+    session: SessionUser,
+    organizationId: string,
+  ): Promise<string> {
     const existing = await this.prisma.user.findFirst({
-      where: { organizationId },
-      orderBy: { createdAt: 'asc' },
+      where: {
+        organizationId,
+        OR: [{ id: session.id }, { email: session.email }],
+      },
       select: { id: true },
     });
 
@@ -351,17 +547,91 @@ export class ProjectsService {
       return existing.id;
     }
 
+    const givenNameInput = session.givenName?.trim();
+    const familyNameInput = session.familyName?.trim();
+    const givenName =
+      givenNameInput && givenNameInput.length > 0
+        ? givenNameInput
+        : 'Engagement';
+    const familyName =
+      familyNameInput && familyNameInput.length > 0
+        ? familyNameInput
+        : 'Lead';
+
     const created = await this.prisma.user.create({
       data: {
         organizationId,
-        email: 'engagement.lead@proserv.local',
-        givenName: 'Engagement',
-        familyName: 'Lead',
+        id: session.id,
+        email: session.email,
+        givenName,
+        familyName,
       },
       select: { id: true },
     });
 
     return created.id;
+  }
+
+  private async findDefaultRateCardId(
+    organizationId: string,
+  ): Promise<string | null> {
+    const rateCard = await this.prisma.rateCard.findFirst({
+      where: { organizationId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+
+    return rateCard?.id ?? null;
+  }
+
+  private async collectFinancials(
+    versionIds: string[],
+  ): Promise<Map<string, FinancialAggregate>> {
+    if (versionIds.length === 0) {
+      return new Map();
+    }
+
+    const assignments = await this.prisma.assignment.findMany({
+      where: {
+        workItem: {
+          versionId: { in: versionIds },
+        },
+      },
+      select: {
+        id: true,
+        workItem: {
+          select: { versionId: true },
+        },
+        plans: {
+          select: { bill: true, cost: true },
+        },
+      },
+    });
+
+    const aggregates = new Map<string, FinancialAggregate>();
+
+    for (const assignment of assignments) {
+      const versionId = assignment.workItem.versionId;
+      if (!versionId) continue;
+
+      const current =
+        aggregates.get(versionId) ?? {
+          bill: 0,
+          cost: 0,
+          assignmentCount: 0,
+        };
+
+      current.assignmentCount += 1;
+
+      for (const plan of assignment.plans) {
+        current.bill += this.toNumber(plan.bill);
+        current.cost += this.toNumber(plan.cost);
+      }
+
+      aggregates.set(versionId, current);
+    }
+
+    return aggregates;
   }
 
   private derivePipelineStatus(
@@ -412,45 +682,7 @@ export class ProjectsService {
       .map((project) => project.versions[0]?.id)
       .filter((value): value is string => Boolean(value));
 
-    const assignmentPlans = versionIds.length
-      ? await this.prisma.assignment.findMany({
-          where: {
-            workItem: {
-              versionId: { in: versionIds },
-            },
-          },
-          select: {
-            workItem: {
-              select: { versionId: true },
-            },
-            plans: {
-              select: { bill: true, cost: true },
-            },
-          },
-        })
-      : [];
-
-    const financialsByVersion = new Map<
-      string,
-      { bill: number; cost: number }
-    >();
-
-    for (const entry of assignmentPlans) {
-      const versionId = entry.workItem.versionId;
-      if (!versionId) continue;
-
-      const existing = financialsByVersion.get(versionId) ?? {
-        bill: 0,
-        cost: 0,
-      };
-
-      for (const plan of entry.plans) {
-        existing.bill += this.toNumber(plan.bill);
-        existing.cost += this.toNumber(plan.cost);
-      }
-
-      financialsByVersion.set(versionId, existing);
-    }
+    const financialsByVersion = await this.collectFinancials(versionIds);
 
     return projects.map((project) => {
       const latestVersion = project.versions[0];
@@ -458,8 +690,9 @@ export class ProjectsService {
         ? financialsByVersion.get(latestVersion.id) ?? {
             bill: 0,
             cost: 0,
+            assignmentCount: 0,
           }
-        : { bill: 0, cost: 0 };
+        : { bill: 0, cost: 0, assignmentCount: 0 };
 
       const status = this.derivePipelineStatus(project);
       const totalValue = financials.bill;
@@ -499,6 +732,7 @@ export class ProjectsService {
         status,
         startDate,
         endDate,
+        billingModel: project.billingModel,
         totalValue,
         currency: project.baseCurrency,
         margin,
