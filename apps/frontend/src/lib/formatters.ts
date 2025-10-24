@@ -10,12 +10,19 @@ export function formatCurrency(value: number, currency: string) {
   }
 }
 
+const utcDateFormatter = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
+
 export function formatDate(value: string) {
-  return new Date(value).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  try {
+    return utcDateFormatter.format(new Date(value));
+  } catch {
+    return value;
+  }
 }
 
 export function formatPercent(value: number) {
